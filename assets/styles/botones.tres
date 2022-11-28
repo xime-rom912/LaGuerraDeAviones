@@ -1,0 +1,11 @@
+[gd_resource type="StyleBoxFlat" format=2]
+
+[resource]
+bg_color = Color( 0.745098, 0.286275, 0.854902, 1 )
+skew = Vector2( 0.5, 0 )
+border_color = Color( 0.133333, 0.2, 0.607843, 1 )
+border_blend = true
+shadow_color = Color( 0.231373, 0.0470588, 0.356863, 0.6 )
+shadow_size = 3
+shadow_offset = Vector2( 1, 1 )
+anti_aliasing_size = 0.947

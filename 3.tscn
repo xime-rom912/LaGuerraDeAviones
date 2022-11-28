@@ -1,0 +1,386 @@
+[gd_scene load_steps=38 format=2]
+
+[ext_resource path="res://assets/campo.png" type="Texture" id=1]
+[ext_resource path="res://assets/inicio.mp3" type="AudioStream" id=2]
+[ext_resource path="res://3.gd" type="Script" id=3]
+[ext_resource path="res://assets/gameover.png" type="Texture" id=4]
+[ext_resource path="res://assets/fonts/fuenteChida.tres" type="DynamicFont" id=5]
+[ext_resource path="res://assets/carga.png" type="Texture" id=6]
+[ext_resource path="res://assets/coin.png" type="Texture" id=7]
+
+[sub_resource type="Shader" id=9]
+code = "// https://godotshaders.com/shader/cloudy-skies/
+// cloudy skies shader
+// inspired from shadertoy shader made by Drift (https://www.shadertoy.com/view/4tdSWr)
+
+shader_type canvas_item;
+
+uniform float cloudscale = 1.1;
+uniform float speed = 0.01;
+uniform float clouddark = 0.5;
+uniform float cloudlight = 0.3;
+uniform float cloudcover = 0.2;
+uniform float cloudalpha = 8.0;
+uniform float skytint = 0.5;
+uniform vec3 skycolour1 = vec3(0.2, 0.4, 0.6);
+uniform vec3 skycolour2 = vec3(0.4, 0.7, 1.0);
+uniform mat2 m = mat2(vec2(1.6,1.2),vec2(-1.2,1.6)); // changement
+
+// functions
+
+vec2 hash( vec2 p ) {
+p = vec2(dot(p,vec2(127.1,311.7)), dot(p,vec2(269.5,183.3)));
+return -1.0 + 2.0*fract(sin(p)*43758.5453123);
+}
+
+float noise( in vec2 p ) {
+float K1 = 0.366025404; // (sqrt(3)-1)/2;
+float K2 = 0.211324865; // (3-sqrt(3))/6;
+vec2 i = floor(p + (p.x+p.y)*K1);
+vec2 a = p - i + (i.x+i.y)*K2;
+vec2 o = (a.x>a.y) ? vec2(1.0,0.0) : vec2(0.0,1.0); //vec2 of = 0.5 + 0.5*vec2(sign(a.x-a.y), sign(a.y-a.x));
+vec2 b = a - o + K2;
+vec2 c = a - 1.0 + 2.0*K2;
+vec3 h = max(0.5-vec3(dot(a,a), dot(b,b), dot(c,c) ), 0.0 );
+vec3 n = h*h*h*h*vec3( dot(a,hash(i+0.0)), dot(b,hash(i+o)), dot(c,hash(i+1.0)));
+return dot(n, vec3(70.0));
+}
+
+float fbm(vec2 n) {
+float total = 0.0, amplitude = 0.1;
+for (int i = 0; i < 7; i++) {
+total += noise(n) * amplitude;
+n = m * n;
+amplitude *= 0.4;
+}
+return total;
+}
+
+// fragment shader
+
+void fragment() {
+vec2 res = 1.0 / SCREEN_PIXEL_SIZE;
+vec2 p = FRAGCOORD.xy / res.xy; // changement
+vec2 uv = p*vec2(res.x/res.y,1.0); // changement
+float time = TIME * speed ;
+float q = fbm(uv * cloudscale * 0.5);
+
+//ridged noise shape
+float r = 0.0;
+uv *= cloudscale;
+uv += q - time;
+float weight = 0.8;
+for (int i=0; i<8; i++){
+r += abs(weight*noise( uv ));
+uv = m*uv + time;
+weight *= 0.7;
+}
+
+//noise shape
+float f = 0.0;
+uv = p*vec2(res.x/res.y,1.0); // changement
+uv *= cloudscale;
+uv += q - time;
+weight = 0.7;
+for (int i=0; i<8; i++){
+f += weight*noise( uv );
+uv = m*uv + time;
+weight *= 0.6;
+}
+
+f *= r + f;
+
+//noise colour
+float c = 0.0;
+time = TIME * speed * 2.0;
+uv = p*vec2(res.x/res.y,1.0); // changement
+uv *= cloudscale*2.0;
+uv += q - time;
+weight = 0.4;
+for (int i=0; i<7; i++){
+c += weight*noise( uv );
+uv = m*uv + time;
+weight *= 0.6;
+}
+
+//noise ridge colour
+float c1 = 0.0;
+time = TIME * speed * 3.0;
+uv = p*vec2(res.x/res.y,1.0);
+uv *= cloudscale*3.0;
+uv += q - time;
+weight = 0.4;
+for (int i=0; i<7; i++){
+c1 += abs(weight*noise( uv ));
+uv = m*uv + time;
+weight *= 0.6;
+}
+
+c += c1;
+
+vec3 skycolour = mix(skycolour2, skycolour1, p.y);
+vec3 cloudcolour = vec3(1.1, 1.1, 0.9) * clamp((clouddark + cloudlight*c), 0.0, 1.0);
+
+f = cloudcover + cloudalpha*f*r;
+
+vec3 result = mix(skycolour, clamp(skytint * skycolour + cloudcolour, 0.0, 1.0), clamp(f + c, 0.0, 1.0));
+
+COLOR.rgb = vec3(result);
+}"
+
+[sub_resource type="ShaderMaterial" id=10]
+shader = SubResource( 9 )
+shader_param/cloudscale = 3.9
+shader_param/speed = 0.4
+shader_param/clouddark = 0.4
+shader_param/cloudlight = 0.4
+shader_param/cloudcover = 0.4
+shader_param/cloudalpha = 6.0
+shader_param/skytint = 0.2
+shader_param/skycolour1 = Vector3( 0.7, 0.2, 0.2 )
+shader_param/skycolour2 = Vector3( 0, 0, 0 )
+shader_param/m = Transform2D( 1.6, -1.2, 1.2, 1.6, 0, 0 )
+
+[sub_resource type="DynamicFont" id=8]
+
+[sub_resource type="AtlasTexture" id=14]
+flags = 4
+atlas = ExtResource( 6 )
+region = Rect2( 0, 0, 124, 93 )
+
+[sub_resource type="AtlasTexture" id=15]
+flags = 4
+atlas = ExtResource( 6 )
+region = Rect2( 124, 0, 124, 93 )
+
+[sub_resource type="AtlasTexture" id=16]
+flags = 4
+atlas = ExtResource( 6 )
+region = Rect2( 248, 0, 124, 93 )
+
+[sub_resource type="AtlasTexture" id=17]
+flags = 4
+atlas = ExtResource( 6 )
+region = Rect2( 0, 93, 124, 93 )
+
+[sub_resource type="AtlasTexture" id=18]
+flags = 4
+atlas = ExtResource( 6 )
+region = Rect2( 124, 93, 124, 93 )
+
+[sub_resource type="AtlasTexture" id=19]
+flags = 4
+atlas = ExtResource( 6 )
+region = Rect2( 248, 93, 124, 93 )
+
+[sub_resource type="AtlasTexture" id=20]
+flags = 4
+atlas = ExtResource( 6 )
+region = Rect2( 0, 186, 124, 93 )
+
+[sub_resource type="AtlasTexture" id=21]
+flags = 4
+atlas = ExtResource( 6 )
+region = Rect2( 124, 186, 124, 93 )
+
+[sub_resource type="AtlasTexture" id=22]
+flags = 4
+atlas = ExtResource( 6 )
+region = Rect2( 248, 186, 124, 93 )
+
+[sub_resource type="SpriteFrames" id=23]
+animations = [ {
+"frames": [ SubResource( 14 ), SubResource( 15 ), SubResource( 16 ), SubResource( 17 ), SubResource( 18 ), SubResource( 19 ), SubResource( 20 ), SubResource( 21 ), SubResource( 22 ) ],
+"loop": true,
+"name": "default",
+"speed": 5.0
+} ]
+
+[sub_resource type="DynamicFontData" id=45]
+font_path = "res://assets/fonts/Carter.ttf"
+
+[sub_resource type="DynamicFont" id=43]
+size = 74
+outline_size = 3
+outline_color = Color( 0.0784314, 0.258824, 0.756863, 1 )
+use_filter = true
+font_data = SubResource( 45 )
+
+[sub_resource type="AtlasTexture" id=35]
+flags = 4
+atlas = ExtResource( 4 )
+region = Rect2( 0, 0, 310, 385 )
+
+[sub_resource type="AtlasTexture" id=36]
+flags = 4
+atlas = ExtResource( 4 )
+region = Rect2( 310, 0, 310, 385 )
+
+[sub_resource type="AtlasTexture" id=37]
+flags = 4
+atlas = ExtResource( 4 )
+region = Rect2( 620, 0, 310, 385 )
+
+[sub_resource type="AtlasTexture" id=38]
+flags = 4
+atlas = ExtResource( 4 )
+region = Rect2( 930, 0, 310, 385 )
+
+[sub_resource type="AtlasTexture" id=39]
+flags = 4
+atlas = ExtResource( 4 )
+region = Rect2( 0, 385, 310, 385 )
+
+[sub_resource type="AtlasTexture" id=40]
+flags = 4
+atlas = ExtResource( 4 )
+region = Rect2( 310, 385, 310, 385 )
+
+[sub_resource type="AtlasTexture" id=41]
+flags = 4
+atlas = ExtResource( 4 )
+region = Rect2( 620, 385, 310, 385 )
+
+[sub_resource type="SpriteFrames" id=44]
+animations = [ {
+"frames": [ SubResource( 35 ), SubResource( 36 ), SubResource( 37 ), SubResource( 38 ), SubResource( 39 ), SubResource( 40 ), SubResource( 41 ) ],
+"loop": true,
+"name": "default",
+"speed": 5.0
+} ]
+
+[sub_resource type="AtlasTexture" id=46]
+flags = 4
+atlas = ExtResource( 7 )
+region = Rect2( 0, 0, 166, 178 )
+
+[sub_resource type="AtlasTexture" id=47]
+flags = 4
+atlas = ExtResource( 7 )
+region = Rect2( 166, 0, 166, 178 )
+
+[sub_resource type="AtlasTexture" id=48]
+flags = 4
+atlas = ExtResource( 7 )
+region = Rect2( 332, 0, 166, 178 )
+
+[sub_resource type="AtlasTexture" id=49]
+flags = 4
+atlas = ExtResource( 7 )
+region = Rect2( 0, 178, 166, 178 )
+
+[sub_resource type="AtlasTexture" id=50]
+flags = 4
+atlas = ExtResource( 7 )
+region = Rect2( 166, 178, 166, 178 )
+
+[sub_resource type="AtlasTexture" id=51]
+flags = 4
+atlas = ExtResource( 7 )
+region = Rect2( 332, 178, 166, 178 )
+
+[sub_resource type="SpriteFrames" id=52]
+animations = [ {
+"frames": [ SubResource( 46 ), SubResource( 47 ), SubResource( 48 ), SubResource( 49 ), SubResource( 50 ), SubResource( 51 ) ],
+"loop": true,
+"name": "default",
+"speed": 5.0
+} ]
+
+[node name="3" type="Node2D"]
+script = ExtResource( 3 )
+
+[node name="Sky" type="Node2D" parent="."]
+
+[node name="TextureRect" type="TextureRect" parent="Sky"]
+material = SubResource( 10 )
+margin_left = -1.0
+margin_top = -5.0
+margin_right = 1032.0
+margin_bottom = 606.0
+texture = ExtResource( 1 )
+expand = true
+
+[node name="scoreT" type="Label" parent="."]
+anchor_left = 0.5
+anchor_top = 0.698
+anchor_right = 0.5
+anchor_bottom = 0.698
+margin_left = 11.0
+margin_top = 15.0
+margin_right = 195.0
+margin_bottom = 56.0
+rect_pivot_offset = Vector2( 49, 15 )
+custom_colors/font_color = Color( 0, 0, 0, 1 )
+custom_fonts/font = SubResource( 8 )
+text = "Score torreta: "
+
+[node name="inicio" type="AudioStreamPlayer" parent="."]
+stream = ExtResource( 2 )
+
+[node name="info" type="CenterContainer" parent="."]
+visible = false
+margin_left = 313.0
+margin_top = 178.0
+margin_right = 723.0
+margin_bottom = 421.0
+
+[node name="Sprite" type="AnimatedSprite" parent="info"]
+position = Vector2( 195, 220 )
+scale = Vector2( 1.12903, 1.21505 )
+frames = SubResource( 23 )
+frame = 3
+playing = true
+
+[node name="Label" type="Label" parent="info"]
+margin_left = 150.0
+margin_top = 96.0
+margin_right = 260.0
+margin_bottom = 146.0
+custom_fonts/font = ExtResource( 5 )
+text = "NIVEL 3"
+
+[node name="gameOver" type="CenterContainer" parent="."]
+pause_mode = 2
+visible = false
+margin_left = 313.0
+margin_top = 178.0
+margin_right = 723.0
+margin_bottom = 421.0
+
+[node name="Label" type="Label" parent="gameOver"]
+margin_top = 64.0
+margin_right = 425.0
+margin_bottom = 179.0
+custom_colors/font_color = Color( 0.105882, 0.337255, 0.890196, 1 )
+custom_fonts/font = SubResource( 43 )
+text = "GAME OVER"
+
+[node name="over" type="AnimatedSprite" parent="gameOver"]
+position = Vector2( 209, 249 )
+scale = Vector2( 0.516129, 0.554545 )
+frames = SubResource( 44 )
+frame = 4
+playing = true
+
+[node name="Win" type="CenterContainer" parent="."]
+pause_mode = 2
+visible = false
+margin_left = 313.0
+margin_top = 178.0
+margin_right = 723.0
+margin_bottom = 421.0
+
+[node name="Label" type="Label" parent="Win"]
+margin_left = 26.0
+margin_top = 64.0
+margin_right = 383.0
+margin_bottom = 179.0
+custom_colors/font_color = Color( 0.831373, 0.823529, 0.101961, 1 )
+custom_fonts/font = SubResource( 43 )
+text = "Ganaste!!!"
+
+[node name="coin" type="AnimatedSprite" parent="Win"]
+position = Vector2( 206, 238 )
+frames = SubResource( 52 )
+playing = true

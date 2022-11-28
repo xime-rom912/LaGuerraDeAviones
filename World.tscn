@@ -1,0 +1,380 @@
+[gd_scene load_steps=10 format=2]
+
+[ext_resource path="res://assets/campo.png" type="Texture" id=1]
+[ext_resource path="res://assets/inicio.mp3" type="AudioStream" id=2]
+[ext_resource path="res://assets/zorrita.png" type="Texture" id=4]
+
+[sub_resource type="GDScript" id=13]
+script/source = "\"\"\"
+ World.gd
+ Alberto Pacheco
+ 18/10/2022 v8
+
+To-do:
+	√ Contador avión [ISSUE]
+	+ Empalme torres (name=Torreta) [ISSUE]
+	? Disparo 1 torre: numerar 1-3 [ISSUE]
+	- Agregar sonidos, ej. explosiones
+	- Agregar balas/misiles
+	- Agregar Score
+	- Escenario
+	- Avión disparo/bomba
+	√ Angulo torre 160º
+\"\"\"
+
+extends Node2D
+
+const Enemy = preload(\"res://Enemy.tscn\") 
+const Gun = preload(\"res://Torreta.tscn\")
+
+const GunName = \"Torre\"   # v8
+const PlaneName = \"Enemy\" # v8
+
+const PlaneAngle = PI / 2 # v8
+
+func _ready():
+	randomize() # v7 Bug
+	new_gun()
+	new_plane()
+	$inicio.playing = true
+	#$AnimationPlayer.play(\"run\")
+	
+func obtenerScore():
+	var score = get_node(\"/root/Score/HUD/Score/ScoreI\")
+	return score
+	
+
+func count_planes(): # v8
+	var count = 0
+	for p in get_children():
+		if PlaneName in p.name:
+			count += 1
+	print(count)
+	return count
+
+func new_plane():
+	var score = int(obtenerScore().text)
+	if(score > 100):
+		obtenerScore().text = \"0\"
+		get_tree().change_scene(\"res://2.tscn\")
+	if(count_planes() == 5):
+		return
+	var enemy = Enemy.instance()
+	var fx = rand_range(-90,90) # plane velocity
+	var force = Vector2(fx,rand_range(-7,9))
+	enemy.set_deferred(\"position\", Vector2(rand_range(100,924), 1))
+	enemy.call_deferred(\"rotate\",  Vector2(-fx,-90).angle()+PlaneAngle) # v8
+	enemy.call_deferred(\"connect\", \"plane_quit\", self, \"new_plane\")
+	enemy.call_deferred(\"connect\", \"gun_quit\", self, \"change_gun\")
+	enemy.call_deferred(\"connect\", \"bullet_quit\", self, \"score_update\")
+	enemy.set_deferred(\"applied_force\", force)
+	call_deferred(\"add_child\", enemy) # Bug: add_child(enemy)
+
+func range_rnd(): return rand_range(100,924)
+
+func new_range(x): return [x-70, x+70]
+
+func check_x(x1, x2, x):
+	if x>=x1 and x<=x2: # empalme?
+		return check_x(x1, x2, range_rnd()) # create & test new x
+	return x
+
+func new_pos(lst): # v7 genera pos nva torreta evitando traslapes
+	var x = range_rnd()
+	if lst.size() > 0:
+		for r in lst:
+			x = check_x(r[0], r[1], x)
+	lst.append(new_range(x))
+	return Vector2(x,550)
+
+func new_gun():
+	var pos_x = [] # v7 zonas existentes generadas para torretas
+	var letras =['N','M','V','B','K','L']
+	var j = 0
+	for i in range(3): # v7 genera 3 torretas
+		var gun = Gun.instance()
+		var num = String(i+1) + letras[j] + letras[j+1] 
+		gun.name = GunName + num # v7 set name
+		gun.get_node(\"gun/label\").text = num # v8
+		gun.position = new_pos(pos_x)
+		j = j+2
+		add_child(gun)
+
+func change_gun(id): # v8 reuse torre
+	var pos_x = [] # pos. torres
+	var torre = get_node(id)
+	var score = 0
+	if (id != null): 
+		torre.destroy() # playm explosion animation
+		for obj in get_children():
+			var name = obj.name
+			if name.begins_with(GunName):
+				if name != id:
+					pos_x.append(new_range(obj.position.x))
+		#yield(get_tree().create_timer(0.45), \"timeout\")
+		torre.position = new_pos(pos_x)
+	
+func score_update(): #v9
+	var score = obtenerScore()
+	var toScore
+	toScore = int(score.text)
+	score.text = str(toScore+2)
+"
+
+[sub_resource type="Shader" id=9]
+code = "// https://godotshaders.com/shader/cloudy-skies/
+// cloudy skies shader
+// inspired from shadertoy shader made by Drift (https://www.shadertoy.com/view/4tdSWr)
+
+shader_type canvas_item;
+
+uniform float cloudscale = 1.1;
+uniform float speed = 0.01;
+uniform float clouddark = 0.5;
+uniform float cloudlight = 0.3;
+uniform float cloudcover = 0.2;
+uniform float cloudalpha = 8.0;
+uniform float skytint = 0.5;
+uniform vec3 skycolour1 = vec3(0.2, 0.4, 0.6);
+uniform vec3 skycolour2 = vec3(0.4, 0.7, 1.0);
+uniform mat2 m = mat2(vec2(1.6,1.2),vec2(-1.2,1.6)); // changement
+
+// functions
+
+vec2 hash( vec2 p ) {
+p = vec2(dot(p,vec2(127.1,311.7)), dot(p,vec2(269.5,183.3)));
+return -1.0 + 2.0*fract(sin(p)*43758.5453123);
+}
+
+float noise( in vec2 p ) {
+float K1 = 0.366025404; // (sqrt(3)-1)/2;
+float K2 = 0.211324865; // (3-sqrt(3))/6;
+vec2 i = floor(p + (p.x+p.y)*K1);
+vec2 a = p - i + (i.x+i.y)*K2;
+vec2 o = (a.x>a.y) ? vec2(1.0,0.0) : vec2(0.0,1.0); //vec2 of = 0.5 + 0.5*vec2(sign(a.x-a.y), sign(a.y-a.x));
+vec2 b = a - o + K2;
+vec2 c = a - 1.0 + 2.0*K2;
+vec3 h = max(0.5-vec3(dot(a,a), dot(b,b), dot(c,c) ), 0.0 );
+vec3 n = h*h*h*h*vec3( dot(a,hash(i+0.0)), dot(b,hash(i+o)), dot(c,hash(i+1.0)));
+return dot(n, vec3(70.0));
+}
+
+float fbm(vec2 n) {
+float total = 0.0, amplitude = 0.1;
+for (int i = 0; i < 7; i++) {
+total += noise(n) * amplitude;
+n = m * n;
+amplitude *= 0.4;
+}
+return total;
+}
+
+// fragment shader
+
+void fragment() {
+vec2 res = 1.0 / SCREEN_PIXEL_SIZE;
+vec2 p = FRAGCOORD.xy / res.xy; // changement
+vec2 uv = p*vec2(res.x/res.y,1.0); // changement
+float time = TIME * speed ;
+float q = fbm(uv * cloudscale * 0.5);
+
+//ridged noise shape
+float r = 0.0;
+uv *= cloudscale;
+uv += q - time;
+float weight = 0.8;
+for (int i=0; i<8; i++){
+r += abs(weight*noise( uv ));
+uv = m*uv + time;
+weight *= 0.7;
+}
+
+//noise shape
+float f = 0.0;
+uv = p*vec2(res.x/res.y,1.0); // changement
+uv *= cloudscale;
+uv += q - time;
+weight = 0.7;
+for (int i=0; i<8; i++){
+f += weight*noise( uv );
+uv = m*uv + time;
+weight *= 0.6;
+}
+
+f *= r + f;
+
+//noise colour
+float c = 0.0;
+time = TIME * speed * 2.0;
+uv = p*vec2(res.x/res.y,1.0); // changement
+uv *= cloudscale*2.0;
+uv += q - time;
+weight = 0.4;
+for (int i=0; i<7; i++){
+c += weight*noise( uv );
+uv = m*uv + time;
+weight *= 0.6;
+}
+
+//noise ridge colour
+float c1 = 0.0;
+time = TIME * speed * 3.0;
+uv = p*vec2(res.x/res.y,1.0);
+uv *= cloudscale*3.0;
+uv += q - time;
+weight = 0.4;
+for (int i=0; i<7; i++){
+c1 += abs(weight*noise( uv ));
+uv = m*uv + time;
+weight *= 0.6;
+}
+
+c += c1;
+
+vec3 skycolour = mix(skycolour2, skycolour1, p.y);
+vec3 cloudcolour = vec3(1.1, 1.1, 0.9) * clamp((clouddark + cloudlight*c), 0.0, 1.0);
+
+f = cloudcover + cloudalpha*f*r;
+
+vec3 result = mix(skycolour, clamp(skytint * skycolour + cloudcolour, 0.0, 1.0), clamp(f + c, 0.0, 1.0));
+
+COLOR.rgb = vec3(result);
+}"
+
+[sub_resource type="ShaderMaterial" id=10]
+shader = SubResource( 9 )
+shader_param/cloudscale = 3.9
+shader_param/speed = 0.4
+shader_param/clouddark = 0.4
+shader_param/cloudlight = 0.4
+shader_param/cloudcover = 0.4
+shader_param/cloudalpha = 6.0
+shader_param/skytint = 0.2
+shader_param/skycolour1 = Vector3( 0.7, 0.1, 0.6 )
+shader_param/skycolour2 = Vector3( 0.6, 0.2, 0.2 )
+shader_param/m = Transform2D( 1.6, -1.2, 1.2, 1.6, 0, 0 )
+
+[sub_resource type="DynamicFont" id=8]
+
+[sub_resource type="Animation" id=11]
+length = 0.001
+tracks/0/type = "value"
+tracks/0/path = NodePath("Sprite:frame")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/keys = {
+"times": PoolRealArray( 0 ),
+"transitions": PoolRealArray( 1 ),
+"update": 0,
+"values": [ 1 ]
+}
+tracks/1/type = "value"
+tracks/1/path = NodePath("Sprite:scale")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/keys = {
+"times": PoolRealArray( 0 ),
+"transitions": PoolRealArray( 1 ),
+"update": 0,
+"values": [ Vector2( 0.5, 0.5 ) ]
+}
+tracks/2/type = "value"
+tracks/2/path = NodePath(".:frame")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/keys = {
+"times": PoolRealArray( 0 ),
+"transitions": PoolRealArray( 1 ),
+"update": 0,
+"values": [ 1 ]
+}
+tracks/3/type = "value"
+tracks/3/path = NodePath(".:scale")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/keys = {
+"times": PoolRealArray( 0 ),
+"transitions": PoolRealArray( 1 ),
+"update": 0,
+"values": [ Vector2( 2, 2 ) ]
+}
+
+[sub_resource type="Animation" id=12]
+resource_name = "run"
+length = 0.6
+loop = true
+tracks/0/type = "value"
+tracks/0/path = NodePath(".:frame")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/keys = {
+"times": PoolRealArray( 0, 0.1, 0.2, 0.3, 0.4, 0.5 ),
+"transitions": PoolRealArray( 1, 1, 1, 1, 1, 1 ),
+"update": 1,
+"values": [ 0, 0, 2, 3, 3, 4 ]
+}
+tracks/1/type = "value"
+tracks/1/path = NodePath(".:scale")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/keys = {
+"times": PoolRealArray( 0, 0.6 ),
+"transitions": PoolRealArray( 1, 1 ),
+"update": 0,
+"values": [ Vector2( 2, 2 ), Vector2( 8, 8 ) ]
+}
+
+[node name="World" type="Node2D"]
+script = SubResource( 13 )
+
+[node name="Sky" type="Node2D" parent="."]
+
+[node name="TextureRect" type="TextureRect" parent="Sky"]
+material = SubResource( 10 )
+margin_left = -1.0
+margin_top = -5.0
+margin_right = 1030.0
+margin_bottom = 586.0
+texture = ExtResource( 1 )
+expand = true
+
+[node name="scoreT" type="Label" parent="."]
+anchor_left = 0.5
+anchor_top = 0.698
+anchor_right = 0.5
+anchor_bottom = 0.698
+margin_left = 11.0
+margin_top = 15.0
+margin_right = 195.0
+margin_bottom = 56.0
+rect_pivot_offset = Vector2( 49, 15 )
+custom_colors/font_color = Color( 0, 0, 0, 1 )
+custom_fonts/font = SubResource( 8 )
+text = "Score torreta: "
+
+[node name="inicio" type="AudioStreamPlayer" parent="."]
+stream = ExtResource( 2 )
+
+[node name="Sprite" type="Sprite" parent="."]
+position = Vector2( 122, 445 )
+scale = Vector2( 2, 2 )
+texture = ExtResource( 4 )
+hframes = 6
+frame = 1
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+root_node = NodePath("../Sprite")
+anims/RESET = SubResource( 11 )
+anims/run = SubResource( 12 )

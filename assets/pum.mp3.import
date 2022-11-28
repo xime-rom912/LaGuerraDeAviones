@@ -1,0 +1,15 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+path="res://.import/pum.mp3-2adb4589d173cb65113f21615c14dbee.mp3str"
+
+[deps]
+
+source_file="res://assets/pum.mp3"
+dest_files=[ "res://.import/pum.mp3-2adb4589d173cb65113f21615c14dbee.mp3str" ]
+
+[params]
+
+loop=true
+loop_offset=0

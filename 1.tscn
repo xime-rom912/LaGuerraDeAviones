@@ -1,0 +1,434 @@
+[gd_scene load_steps=29 format=2]
+
+[ext_resource path="res://assets/campo.png" type="Texture" id=1]
+[ext_resource path="res://assets/inicio.mp3" type="AudioStream" id=2]
+[ext_resource path="res://assets/fonts/fuenteChida.tres" type="DynamicFont" id=3]
+[ext_resource path="res://assets/gameover.png" type="Texture" id=4]
+[ext_resource path="res://assets/carga.png" type="Texture" id=5]
+
+[sub_resource type="GDScript" id=13]
+script/source = "\"\"\"
+ World.gd
+ Alberto Pacheco
+ 18/10/2022 v8
+
+To-do:
+	√ Contador avión [ISSUE]
+	+ Empalme torres (name=Torreta) [ISSUE]
+	? Disparo 1 torre: numerar 1-3 [ISSUE]
+	- Agregar sonidos, ej. explosiones
+	- Agregar balas/misiles
+	- Agregar Score
+	- Escenario
+	- Avión disparo/bomba
+	√ Angulo torre 160º
+\"\"\"
+
+extends Node2D
+
+const Enemy = preload(\"res://Enemy.tscn\") 
+const Gun = preload(\"res://Torreta.tscn\")
+
+const GunName = \"Torre\"   # v8
+const PlaneName = \"Enemy\" # v8
+
+const PlaneAngle = PI / 2 # v8
+
+func _ready():
+	$info.visible = true
+	yield(get_tree().create_timer(3), \"timeout\")
+	$info.visible = false
+	randomize() # v7 Bug
+	new_gun()
+	new_plane()
+	$inicio.playing = true
+	get_node(\"/root/Score/HUD/Nivel/NivelA\").text = \"1\"
+	#$AnimationPlayer.play(\"run\")
+	
+func obtenerScore():
+	var score = get_node(\"/root/Score/HUD/Score/ScoreI\")
+	return score
+	
+
+func count_planes(): # v8
+	var count = 0
+	for p in get_children():
+		if PlaneName in p.name:
+			count += 1
+	print(count)
+
+func new_plane():
+	var score = int(obtenerScore().text)
+	if(score > 100):
+		obtenerScore().text = \"0\"
+		get_tree().change_scene(\"res://2.tscn\")
+	if(count_planes() == 5):
+		return
+	var enemy = Enemy.instance()
+	var fx = rand_range(-90,90) # plane velocity
+	var force = Vector2(fx,rand_range(-7,9))
+	enemy.set_deferred(\"position\", Vector2(rand_range(100,924), 1))
+	enemy.call_deferred(\"rotate\",  Vector2(-fx,-90).angle()+PlaneAngle) # v8
+	enemy.call_deferred(\"connect\", \"plane_quit\", self, \"new_plane\")
+	enemy.call_deferred(\"connect\", \"gun_quit\", self, \"change_gun\")
+	enemy.call_deferred(\"connect\", \"bullet_quit\", self, \"score_update\")
+	enemy.set_deferred(\"applied_force\", force)
+	call_deferred(\"add_child\", enemy) # Bug: add_child(enemy)
+
+func range_rnd(): return rand_range(100,924)
+
+func new_range(x): return [x-70, x+70]
+
+func check_x(x1, x2, x):
+	if x>=x1 and x<=x2: # empalme?
+		return check_x(x1, x2, range_rnd()) # create & test new x
+	return x
+
+func new_pos(lst): # v7 genera pos nva torreta evitando traslapes
+	var x = range_rnd()
+	if lst.size() > 0:
+		for r in lst:
+			x = check_x(r[0], r[1], x)
+	lst.append(new_range(x))
+	return Vector2(x,550)
+
+func new_gun():
+	var pos_x = [] # v7 zonas existentes generadas para torretas
+	var letras =['N','M','V','B','K','L']
+	var j = 0
+	for i in range(3): # v7 genera 3 torretas
+		var gun = Gun.instance()
+		var num = String(i+1) + letras[j] + letras[j+1] 
+		gun.name = GunName + num # v7 set name
+		gun.get_node(\"gun/label\").text = num # v8
+		gun.position = new_pos(pos_x)
+		j = j+2
+		add_child(gun)
+
+func change_gun(id): # v8 reuse torre
+	var vidas = int(get_node(\"/root/Score/HUD/Lives/LivesA\").text)
+	var totalV = vidas-1
+	get_node(\"/root/Score/HUD/Lives/LivesA\").text = str(totalV)
+	if(totalV <= 0):
+		get_tree().paused = true
+		$gameOver.visible = true
+		yield(get_tree().create_timer(3), \"timeout\")
+		get_tree().quit(-1)
+	var pos_x = [] # pos. torres
+	var torre = get_node(id)
+	var score = 0
+	if (id != null): 
+		torre.destroy() # playm explosion animation
+		for obj in get_children():
+			var name = obj.name
+			if name.begins_with(GunName):
+				if name != id:
+					pos_x.append(new_range(obj.position.x))
+		torre.position = new_pos(pos_x)
+	
+func score_update(): #v9
+	var score = obtenerScore()
+	var toScore
+	toScore = int(score.text)
+	score.text = str(toScore+2)
+"
+
+[sub_resource type="Shader" id=9]
+code = "// https://godotshaders.com/shader/cloudy-skies/
+// cloudy skies shader
+// inspired from shadertoy shader made by Drift (https://www.shadertoy.com/view/4tdSWr)
+
+shader_type canvas_item;
+
+uniform float cloudscale = 1.1;
+uniform float speed = 0.01;
+uniform float clouddark = 0.5;
+uniform float cloudlight = 0.3;
+uniform float cloudcover = 0.2;
+uniform float cloudalpha = 8.0;
+uniform float skytint = 0.5;
+uniform vec3 skycolour1 = vec3(0.2, 0.4, 0.6);
+uniform vec3 skycolour2 = vec3(0.4, 0.7, 1.0);
+uniform mat2 m = mat2(vec2(1.6,1.2),vec2(-1.2,1.6)); // changement
+
+// functions
+
+vec2 hash( vec2 p ) {
+p = vec2(dot(p,vec2(127.1,311.7)), dot(p,vec2(269.5,183.3)));
+return -1.0 + 2.0*fract(sin(p)*43758.5453123);
+}
+
+float noise( in vec2 p ) {
+float K1 = 0.366025404; // (sqrt(3)-1)/2;
+float K2 = 0.211324865; // (3-sqrt(3))/6;
+vec2 i = floor(p + (p.x+p.y)*K1);
+vec2 a = p - i + (i.x+i.y)*K2;
+vec2 o = (a.x>a.y) ? vec2(1.0,0.0) : vec2(0.0,1.0); //vec2 of = 0.5 + 0.5*vec2(sign(a.x-a.y), sign(a.y-a.x));
+vec2 b = a - o + K2;
+vec2 c = a - 1.0 + 2.0*K2;
+vec3 h = max(0.5-vec3(dot(a,a), dot(b,b), dot(c,c) ), 0.0 );
+vec3 n = h*h*h*h*vec3( dot(a,hash(i+0.0)), dot(b,hash(i+o)), dot(c,hash(i+1.0)));
+return dot(n, vec3(70.0));
+}
+
+float fbm(vec2 n) {
+float total = 0.0, amplitude = 0.1;
+for (int i = 0; i < 7; i++) {
+total += noise(n) * amplitude;
+n = m * n;
+amplitude *= 0.4;
+}
+return total;
+}
+
+// fragment shader
+
+void fragment() {
+vec2 res = 1.0 / SCREEN_PIXEL_SIZE;
+vec2 p = FRAGCOORD.xy / res.xy; // changement
+vec2 uv = p*vec2(res.x/res.y,1.0); // changement
+float time = TIME * speed ;
+float q = fbm(uv * cloudscale * 0.5);
+
+//ridged noise shape
+float r = 0.0;
+uv *= cloudscale;
+uv += q - time;
+float weight = 0.8;
+for (int i=0; i<8; i++){
+r += abs(weight*noise( uv ));
+uv = m*uv + time;
+weight *= 0.7;
+}
+
+//noise shape
+float f = 0.0;
+uv = p*vec2(res.x/res.y,1.0); // changement
+uv *= cloudscale;
+uv += q - time;
+weight = 0.7;
+for (int i=0; i<8; i++){
+f += weight*noise( uv );
+uv = m*uv + time;
+weight *= 0.6;
+}
+
+f *= r + f;
+
+//noise colour
+float c = 0.0;
+time = TIME * speed * 2.0;
+uv = p*vec2(res.x/res.y,1.0); // changement
+uv *= cloudscale*2.0;
+uv += q - time;
+weight = 0.4;
+for (int i=0; i<7; i++){
+c += weight*noise( uv );
+uv = m*uv + time;
+weight *= 0.6;
+}
+
+//noise ridge colour
+float c1 = 0.0;
+time = TIME * speed * 3.0;
+uv = p*vec2(res.x/res.y,1.0);
+uv *= cloudscale*3.0;
+uv += q - time;
+weight = 0.4;
+for (int i=0; i<7; i++){
+c1 += abs(weight*noise( uv ));
+uv = m*uv + time;
+weight *= 0.6;
+}
+
+c += c1;
+
+vec3 skycolour = mix(skycolour2, skycolour1, p.y);
+vec3 cloudcolour = vec3(1.1, 1.1, 0.9) * clamp((clouddark + cloudlight*c), 0.0, 1.0);
+
+f = cloudcover + cloudalpha*f*r;
+
+vec3 result = mix(skycolour, clamp(skytint * skycolour + cloudcolour, 0.0, 1.0), clamp(f + c, 0.0, 1.0));
+
+COLOR.rgb = vec3(result);
+}"
+
+[sub_resource type="ShaderMaterial" id=10]
+shader = SubResource( 9 )
+shader_param/cloudscale = 3.9
+shader_param/speed = 0.4
+shader_param/clouddark = 0.4
+shader_param/cloudlight = 0.4
+shader_param/cloudcover = 0.4
+shader_param/cloudalpha = 6.0
+shader_param/skytint = 0.2
+shader_param/skycolour1 = Vector3( 0.7, 0.1, 0.6 )
+shader_param/skycolour2 = Vector3( 0.6, 0.2, 0.2 )
+shader_param/m = Transform2D( 1.6, -1.2, 1.2, 1.6, 0, 0 )
+
+[sub_resource type="AtlasTexture" id=14]
+flags = 4
+atlas = ExtResource( 5 )
+region = Rect2( 0, 0, 124, 93 )
+
+[sub_resource type="AtlasTexture" id=15]
+flags = 4
+atlas = ExtResource( 5 )
+region = Rect2( 124, 0, 124, 93 )
+
+[sub_resource type="AtlasTexture" id=16]
+flags = 4
+atlas = ExtResource( 5 )
+region = Rect2( 248, 0, 124, 93 )
+
+[sub_resource type="AtlasTexture" id=17]
+flags = 4
+atlas = ExtResource( 5 )
+region = Rect2( 0, 93, 124, 93 )
+
+[sub_resource type="AtlasTexture" id=18]
+flags = 4
+atlas = ExtResource( 5 )
+region = Rect2( 124, 93, 124, 93 )
+
+[sub_resource type="AtlasTexture" id=19]
+flags = 4
+atlas = ExtResource( 5 )
+region = Rect2( 248, 93, 124, 93 )
+
+[sub_resource type="AtlasTexture" id=20]
+flags = 4
+atlas = ExtResource( 5 )
+region = Rect2( 0, 186, 124, 93 )
+
+[sub_resource type="AtlasTexture" id=21]
+flags = 4
+atlas = ExtResource( 5 )
+region = Rect2( 124, 186, 124, 93 )
+
+[sub_resource type="AtlasTexture" id=22]
+flags = 4
+atlas = ExtResource( 5 )
+region = Rect2( 248, 186, 124, 93 )
+
+[sub_resource type="SpriteFrames" id=23]
+animations = [ {
+"frames": [ SubResource( 14 ), SubResource( 15 ), SubResource( 16 ), SubResource( 17 ), SubResource( 18 ), SubResource( 19 ), SubResource( 20 ), SubResource( 21 ), SubResource( 22 ) ],
+"loop": true,
+"name": "default",
+"speed": 5.0
+} ]
+
+[sub_resource type="DynamicFontData" id=43]
+font_path = "res://assets/fonts/rubik.ttf"
+
+[sub_resource type="DynamicFont" id=34]
+size = 70
+outline_size = 3
+outline_color = Color( 0.278431, 0.0235294, 0.0941176, 1 )
+font_data = SubResource( 43 )
+
+[sub_resource type="AtlasTexture" id=35]
+flags = 4
+atlas = ExtResource( 4 )
+region = Rect2( 0, 0, 310, 385 )
+
+[sub_resource type="AtlasTexture" id=36]
+flags = 4
+atlas = ExtResource( 4 )
+region = Rect2( 310, 0, 310, 385 )
+
+[sub_resource type="AtlasTexture" id=37]
+flags = 4
+atlas = ExtResource( 4 )
+region = Rect2( 620, 0, 310, 385 )
+
+[sub_resource type="AtlasTexture" id=38]
+flags = 4
+atlas = ExtResource( 4 )
+region = Rect2( 930, 0, 310, 385 )
+
+[sub_resource type="AtlasTexture" id=39]
+flags = 4
+atlas = ExtResource( 4 )
+region = Rect2( 0, 385, 310, 385 )
+
+[sub_resource type="AtlasTexture" id=40]
+flags = 4
+atlas = ExtResource( 4 )
+region = Rect2( 310, 385, 310, 385 )
+
+[sub_resource type="AtlasTexture" id=41]
+flags = 4
+atlas = ExtResource( 4 )
+region = Rect2( 620, 385, 310, 385 )
+
+[sub_resource type="SpriteFrames" id=42]
+animations = [ {
+"frames": [ SubResource( 35 ), SubResource( 36 ), SubResource( 37 ), SubResource( 38 ), SubResource( 39 ), SubResource( 40 ), SubResource( 41 ) ],
+"loop": true,
+"name": "default",
+"speed": 5.0
+} ]
+
+[node name="1" type="Node2D"]
+script = SubResource( 13 )
+
+[node name="Sky" type="Node2D" parent="."]
+
+[node name="TextureRect" type="TextureRect" parent="Sky"]
+material = SubResource( 10 )
+margin_left = -1.0
+margin_top = -5.0
+margin_right = 1032.0
+margin_bottom = 608.0
+texture = ExtResource( 1 )
+expand = true
+
+[node name="inicio" type="AudioStreamPlayer" parent="."]
+stream = ExtResource( 2 )
+
+[node name="info" type="CenterContainer" parent="."]
+visible = false
+margin_left = 313.0
+margin_top = 178.0
+margin_right = 723.0
+margin_bottom = 421.0
+
+[node name="Sprite" type="AnimatedSprite" parent="info"]
+position = Vector2( 195, 220 )
+scale = Vector2( 1.12903, 1.21505 )
+frames = SubResource( 23 )
+frame = 6
+playing = true
+
+[node name="Label" type="Label" parent="info"]
+margin_left = 153.0
+margin_top = 96.0
+margin_right = 257.0
+margin_bottom = 146.0
+custom_fonts/font = ExtResource( 3 )
+text = "NIVEL 1"
+
+[node name="gameOver" type="CenterContainer" parent="."]
+pause_mode = 2
+visible = false
+margin_left = 313.0
+margin_top = 178.0
+margin_right = 723.0
+margin_bottom = 421.0
+
+[node name="Label" type="Label" parent="gameOver"]
+margin_top = 79.0
+margin_right = 427.0
+margin_bottom = 163.0
+custom_colors/font_color = Color( 0.105882, 0.337255, 0.890196, 1 )
+custom_fonts/font = SubResource( 34 )
+text = "GAME OVER"
+
+[node name="over" type="AnimatedSprite" parent="gameOver"]
+position = Vector2( 209, 249 )
+scale = Vector2( 0.516129, 0.554545 )
+frames = SubResource( 42 )
+frame = 1
+playing = true
